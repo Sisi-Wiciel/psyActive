@@ -1,0 +1,38 @@
+schema_version: "1.0"
+reference_id: "demo_mood_9_zh_adult_v1"
+instrument_id: "demo_mood_9"
+instrument_version: "1.0.0"
+language: "zh-CN"
+population:
+  age_min: 18
+  age_max: 65
+  setting: "adult_outpatient_demo"
+reliability:
+  type: "test_retest"
+  estimate: 0.85
+reference_sd: 5.0
+severity_bands:
+  - label: "demo_band_1"
+    lower: 0
+    upper: 4
+  - label: "demo_band_2"
+    lower: 5
+    upper: 9
+  - label: "demo_band_3"
+    lower: 10
+    upper: 14
+  - label: "demo_band_4"
+    lower: 15
+    upper: 19
+  - label: "demo_band_5"
+    lower: 20
+    upper: 27
+mcid:
+  value: 5
+  direction: "decrease"
+license:
+  identifier: "CC0-1.0"
+provenance:
+  source: "internal-demo-only"
+  last_reviewed: "2026-08-13"
+  warning: "所有参数均为虚构测试参数，不得用于临床。"

@@ -1,0 +1,56 @@
+schema_version: "1.0"
+instrument_id: "demo_mood_9"
+name: "Demonstration Mood Scale"
+short_name: "DMS-9"
+version: "1.0.0"
+language: "zh-CN"
+status: "demo_only"
+direction: "higher_worse"
+items:
+  - item_id: "dms_1"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_2"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_3"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_4"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_5"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_6"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_7"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_8"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+  - item_id: "dms_9"
+    value_type: "integer"
+    allowed_values: [0, 1, 2, 3]
+scores:
+  - score_name: "total"
+    items: ["dms_1", "dms_2", "dms_3", "dms_4", "dms_5", "dms_6", "dms_7", "dms_8", "dms_9"]
+    operation: "sum"
+    min_answered: 9
+    prorate: false
+    theoretical_min: 0
+    theoretical_max: 27
+safety_items:
+  - item_id: "dms_9"
+    trigger_values: [1, 2, 3]
+    event_type: "crisis_item_review"
+    priority: "urgent_review"
+license:
+  identifier: "CC0-1.0"
+  redistributable: true
+  note: "完全虚构，仅用于软件测试；不是临床量表。"
+provenance:
+  reference_id: "internal-demo-only"
+  last_reviewed: "2026-08-13"

@@ -1,0 +1,44 @@
+schema_version: "1.0"
+ruleset_id: "adult_outpatient_demo"
+version: "1.0.0"
+status: "demo_only"
+rules:
+  - rule_id: "crisis_item_review"
+    description: "虚构安全题项非零时要求人工复核"
+    when:
+      all:
+        - field: "event_type"
+          operator: "eq"
+          value: "crisis_item_review"
+    then:
+      alert_level: "urgent_review"
+      reason_code: "SAFETY_ITEM_REVIEW"
+  - rule_id: "persistent_mood_shift"
+    description: "量表总分连续两次偏离个人基线"
+    when:
+      all:
+        - field: "event_type"
+          operator: "eq"
+          value: "sustained_shift"
+        - field: "metric_id"
+          operator: "eq"
+          value: "demo_mood_9:total"
+        - field: "change_value"
+          operator: "gte"
+          value: 2.5
+    then:
+      alert_level: "review"
+      reason_code: "PERSISTENT_MOOD_SHIFT"
+  - rule_id: "missingness_watch"
+    description: "依从性显著下降时核查技术和参与原因"
+    when:
+      all:
+        - field: "event_type"
+          operator: "eq"
+          value: "missingness_change"
+    then:
+      alert_level: "watch"
+      reason_code: "MISSINGNESS_CHANGE"
+metadata:
+  warning: "演示规则，不得直接用于临床。"
+  last_reviewed: "2026-08-13"
