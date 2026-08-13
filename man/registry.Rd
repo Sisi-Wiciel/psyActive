@@ -64,6 +64,14 @@ item text. \code{validate_ruleset()} returns a \code{psy_quality} object.
 Definitions bundled with psyActive are fictional and demo-only. A successful
 schema check is not evidence of clinical validity, appropriate population fit,
 or permission to use a real instrument.
+
+Registry identifiers are portable ASCII strings of at most 100 bytes. They
+must begin and end with a letter or digit; periods, underscores, and hyphens
+may also appear between those characters. Instrument versions and reference
+instrument versions must use Semantic Versioning 2.0.0, for example
+\code{1.0.0} or \code{1.2.3-rc.1+build.5}. These restrictions keep stored
+definitions inside their registry directories and give identifiers consistent
+meaning on supported filesystems.
 }
 \examples{
 inst_file <- system.file("extdata", "instruments", "demo_mood_9.yml",

@@ -23,8 +23,10 @@ validate_observation(x, registry = NULL,
   \code{instrument_version}, \code{item_id}, and \code{record_id}. At least
   one of \code{value_raw}, \code{value_num}, or \code{missing_reason} must be
   mapped.}
-  \item{timezone}{A scalar IANA timezone used when timestamps do not already
-  carry timezone metadata.}
+  \item{timezone}{An optional scalar IANA source timezone. It is required for
+  naive character or \code{Date} timestamps unless \code{source_timezone} is
+  mapped. For \code{POSIXct}/\code{POSIXlt} input, it must agree with any
+  non-empty timezone attribute already carried by the object.}
   \item{source_system}{A non-empty identifier for the source system.}
   \item{strict}{If \code{TRUE}, stop when conversion produces schema errors.
   If \code{FALSE}, return the object and expose findings through
@@ -45,7 +47,16 @@ audit attribute. \code{validate_observation()} returns a
 }
 \details{
 Identifiers should be pseudonymous. Conversion records both source timezone
-and UTC time so that temporal assumptions remain auditable.
+and UTC time so that temporal assumptions remain auditable. ISO 8601 character
+timestamps ending in \code{Z}, \code{+hh:mm}, or \code{+hhmm} are interpreted
+as absolute instants; naive character timestamps are interpreted using their
+row-specific IANA source timezones. A non-empty timezone attribute on
+\code{POSIXct} or \code{POSIXlt} input is retained as \code{source_timezone},
+and conflicting explicit or mapped timezone metadata is rejected.
+
+Stable observation identifiers are derived from \code{person_id},
+\code{record_id}, \code{assessment_id}, \code{item_id}, \code{source_system},
+and the exact UTC observation time.
 }
 \examples{
 raw <- data.frame(

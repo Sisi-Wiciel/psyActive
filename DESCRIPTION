@@ -3,7 +3,7 @@ Type: Package
 Title: Auditable Workflows for Measurement-Based Mental Health Care
 Version: 0.1.0
 Authors@R: c(
-    person("Sisi", "Zheng", email = "maintainer@example.org", role = c("aut", "cre"))
+    person("Sisi", "Zheng", email = "zhengsisi@ccmu.edu.cn", role = c("aut", "cre"))
   )
 Description: Provides data contracts, declarative instrument scoring, data
     quality assessment, personal baselines, reliable-change calculations,

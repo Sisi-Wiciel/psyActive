@@ -18,23 +18,33 @@ record_review(event, reviewer_id, disposition, action_code = NULL,
 event_status(events, reviews)
 }
 \arguments{
-  \item{events}{Event data.}
+  \item{events}{Event data. For \code{event_status()}, \code{event_id}
+  values must be non-missing, non-empty, and unique. If an
+  \code{event_status} column is present, every value must be one of
+  \code{"open"}, \code{"acknowledged"}, \code{"reviewed"},
+  \code{"escalated"}, or \code{"closed"}.}
   \item{scores}{Optional score data reserved as workflow context.}
   \item{quality}{Optional quality data reserved as workflow context.}
   \item{ruleset}{A \code{psy_ruleset} object or YAML/JSON path.}
   \item{as_of}{Evaluation timestamp recorded in the audit configuration.}
   \item{audit}{If \code{TRUE}, attach an audit record.}
-  \item{event}{One event row or an event identifier.}
-  \item{reviewer_id}{Pseudonymous local reviewer identifier.}
+  \item{event}{One event row or a non-missing, non-empty event identifier.}
+  \item{reviewer_id}{A non-missing, non-empty pseudonymous local reviewer
+  identifier.}
   \item{disposition}{One of \code{"confirmed"},
   \code{"not_concerning"}, \code{"insufficient_data"},
   \code{"duplicate"}, or \code{"escalated"}.}
   \item{action_code}{Optional institution-defined action code.}
   \item{rationale_code}{Optional structured rationale code.}
-  \item{next_review_at}{Optional next-review timestamp.}
-  \item{reviewed_at}{Review timestamp.}
+  \item{next_review_at}{\code{NULL} or one valid, finite next-review
+  timestamp. A supplied timestamp is normalized to UTC.}
+  \item{reviewed_at}{One valid, finite review timestamp, normalized to UTC.}
   \item{reviews}{Review-history data, normally rows returned by
-  \code{record_review()}.}
+  \code{record_review()}. It must contain \code{event_id},
+  \code{disposition}, and \code{reviewed_at}. Event identifiers must be
+  non-missing and non-empty, dispositions must use one of the five values
+  accepted by \code{record_review()}, and every review time must be valid and
+  non-missing. Review times are normalized to UTC.}
 }
 \value{
 \code{apply_rules()} returns a \code{psy_event} object with applicable alert,
@@ -47,7 +57,10 @@ Rules coordinate review; they must not be used as autonomous diagnosis,
 prescribing, or crisis-response logic. Bundled rules are fictional and
 demo-only. The \code{scores} and \code{quality} arguments are retained for
 workflow compatibility but the current evaluator applies rules to event-row
-fields.
+fields. \code{event_status()} requires one row per event and therefore rejects
+duplicate event identifiers. Reviews for event identifiers not present in
+\code{events} are ignored, which permits deriving status for an event subset
+from a complete review history; all review rows are validated before matching.
 }
 \examples{
 events <- data.frame(

@@ -11,24 +11,22 @@ Local `R CMD check --no-manual --no-vignettes` result:
 
 Local `R CMD check --as-cran --no-manual` result:
 
-* 0 errors | 0 warnings | 3 notes
-* Incoming feasibility and URL checks could not access CRAN, Bioconductor, or
-  GitHub because the check environment had no DNS/network access.
-* The check environment could not verify its current time.
+* 0 errors | 0 warnings | 2 notes
+* Incoming feasibility reports that this is a new submission.
 * Pandoc was unavailable, so `README.md` and `NEWS.md` rendering was not
   checked.
 
-These environment notes should be rechecked on a networked CRAN-like service
-with Pandoc before submission.
+Source tarball checked: `psyActive_0.1.0.tar.gz`
+SHA-256: `ca7e83e0299a403a828445fe62c600c330659045ce75504ac7558df13ac4e0c6`
 
-## Submission blocker
+The Markdown rendering note should be rechecked on a CRAN-like service with
+Pandoc before submission.
 
-`DESCRIPTION` currently uses `maintainer@example.org` for the creator and
-maintainer. This is intentionally not guessed or replaced automatically. A
-real, monitored email address controlled by the maintainer must replace this
-placeholder before any CRAN submission. The final maintainer must also confirm
-that the address, copyright holder, package URL, and contributor roles are
-accurate.
+## Maintainer
+
+The creator and maintainer address in `DESCRIPTION` is an institutional
+correspondence address. The maintainer must be able to receive and respond to
+CRAN confirmation messages at that address.
 
 ## Safety and bundled content
 

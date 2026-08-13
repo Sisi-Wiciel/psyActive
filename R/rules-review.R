@@ -2,6 +2,29 @@ ruleset_abort <- function(message) {
   psy_abort(message, "psy_error_schema")
 }
 
+.psy_review_dispositions <- c(
+  "confirmed", "not_concerning", "insufficient_data", "duplicate", "escalated"
+)
+
+review_time_scalar <- function(x, label, allow_null = FALSE) {
+  if (allow_null && is.null(x)) {
+    return(as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC"))
+  }
+  value <- tryCatch(
+    suppressWarnings(as_utc(x, "UTC")),
+    error = function(e) NULL
+  )
+  if (is.null(value) || length(value) != 1L || is.na(value) ||
+      !is.finite(as.numeric(value))) {
+    qualifier <- if (allow_null) "NULL or one" else "one"
+    psy_abort(
+      paste(label, "must be", qualifier, "valid, finite time."),
+      "psy_error_schema"
+    )
+  }
+  value
+}
+
 rule_scalar_string <- function(x, label) {
   if (!is.character(x) || length(x) != 1L || is.na(x) || !nzchar(x)) {
     ruleset_abort(paste0(label, " must be one non-empty string."))
@@ -300,43 +323,46 @@ apply_rules <- function(events, scores = NULL, quality = NULL, ruleset,
 }
 
 #' Record a Human Review
-#' @param event One event row or event identifier.
-#' @param reviewer_id Pseudonymous local reviewer identifier.
+#' @param event One event row or a non-missing, non-empty event identifier.
+#' @param reviewer_id Non-missing, non-empty pseudonymous local reviewer
+#'   identifier.
 #' @param disposition Review disposition.
 #' @param action_code Optional institution-defined action code.
 #' @param rationale_code Optional rationale code.
-#' @param next_review_at Optional next review time.
-#' @param reviewed_at Review time.
+#' @param next_review_at `NULL` or one valid, finite next review time. Supplied
+#'   values are normalized to UTC.
+#' @param reviewed_at One valid, finite review time, normalized to UTC.
 #' @return A one-row `psy_review` object.
 #' @export
 record_review <- function(event, reviewer_id, disposition, action_code = NULL,
                           rationale_code = NULL, next_review_at = NULL,
                           reviewed_at = Sys.time()) {
-  allowed <- c("confirmed", "not_concerning", "insufficient_data",
-               "duplicate", "escalated")
+  allowed <- .psy_review_dispositions
   if (!is.character(disposition) || length(disposition) != 1L ||
       is.na(disposition) || !disposition %in% allowed) {
     psy_abort(paste("disposition must be one of", paste(allowed, collapse = ", ")),
               "psy_error_schema")
   }
   reviewer_id <- as.character(reviewer_id)
-  if (length(reviewer_id) != 1L || is.na(reviewer_id) || !nzchar(reviewer_id)) {
+  if (length(reviewer_id) != 1L || is.na(reviewer_id) ||
+      !nzchar(trimws(reviewer_id))) {
     psy_abort("reviewer_id must be one non-empty string.", "psy_error_schema")
   }
-  event_id <- if (is.data.frame(event)) event$event_id[1L] else as.character(event)[1L]
-  if (!length(event_id) || is.na(event_id) || !nzchar(event_id)) {
+  event_id <- if (is.data.frame(event)) {
+    if (!"event_id" %in% names(event) || NROW(event) != 1L) character() else {
+      as.character(event$event_id)
+    }
+  } else {
+    as.character(event)
+  }
+  if (length(event_id) != 1L || is.na(event_id) ||
+      !nzchar(trimws(event_id))) {
     psy_abort("A valid event_id is required.", "psy_error_schema")
   }
-  reviewed_at <- as_utc(reviewed_at, "UTC")
-  if (length(reviewed_at) != 1L || is.na(reviewed_at)) {
-    psy_abort("reviewed_at must be one valid time.", "psy_error_schema")
-  }
-  next_review_at <- if (is.null(next_review_at)) {
-    as.POSIXct(NA, origin = "1970-01-01", tz = "UTC")
-  } else as_utc(next_review_at, "UTC")
-  if (length(next_review_at) != 1L) {
-    psy_abort("next_review_at must be NULL or one valid time.", "psy_error_schema")
-  }
+  reviewed_at <- review_time_scalar(reviewed_at, "reviewed_at")
+  next_review_at <- review_time_scalar(
+    next_review_at, "next_review_at", allow_null = TRUE
+  )
   out <- data.frame(
     review_id = stable_id("review", event_id, reviewer_id, reviewed_at, disposition),
     event_id = event_id, reviewer_id = reviewer_id,
@@ -352,9 +378,14 @@ record_review <- function(event, reviewer_id, disposition, action_code = NULL,
 }
 
 #' Derive Current Event Status
-#' @param events Event data.
-#' @param reviews Review history.
+#' @param events Event data with unique, non-missing, non-empty `event_id`
+#'   values. If present, `event_status` must use a supported status value.
+#' @param reviews Review history with valid `event_id`, `disposition`, and
+#'   `reviewed_at` fields.
 #' @return Event data with derived status and latest-review fields.
+#' @details Reviews for event identifiers not present in `events` are ignored.
+#'   This permits deriving status for a subset of events from a complete review
+#'   history, but all review rows are validated before matching.
 #' @export
 event_status <- function(events, reviews) {
   if (!is.data.frame(events) || !is.data.frame(reviews)) {
@@ -365,9 +396,30 @@ event_status <- function(events, reviews) {
   if (!"event_id" %in% names(out)) {
     psy_abort("events must contain event_id.", "psy_error_schema")
   }
+  event_ids <- as.character(out$event_id)
+  invalid_event_ids <- is.na(event_ids) | !nzchar(trimws(event_ids))
+  if (any(invalid_event_ids)) {
+    psy_abort(
+      "events$event_id must contain non-missing, non-empty values.",
+      "psy_error_schema"
+    )
+  }
+  if (anyDuplicated(event_ids)) {
+    psy_abort("events$event_id must be unique.", "psy_error_schema")
+  }
+  out$event_id <- event_ids
   if ("event_status" %in% names(out)) {
     current <- as.character(out$event_status)
-    current[is.na(current) | !nzchar(current)] <- "open"
+    invalid_status <- is.na(current) | !current %in% .psy_event_status
+    if (any(invalid_status)) {
+      psy_abort(
+        paste0(
+          "events$event_status must contain only: ",
+          paste(.psy_event_status, collapse = ", "), "."
+        ),
+        "psy_error_schema"
+      )
+    }
     out$event_status <- current
   } else {
     out$event_status <- rep("open", NROW(out))
@@ -375,17 +427,62 @@ event_status <- function(events, reviews) {
   out$latest_disposition <- rep(NA_character_, NROW(out))
   out$latest_reviewed_at <- as.POSIXct(rep(NA_real_, NROW(out)),
                                       origin = "1970-01-01", tz = "UTC")
-  if (!NROW(out) || !NROW(reviews)) return(new_psy_df(out, "psy_event"))
+  reviews <- as.data.frame(reviews, stringsAsFactors = FALSE)
   required_reviews <- c("event_id", "disposition", "reviewed_at")
   missing <- setdiff(required_reviews, names(reviews))
   if (length(missing)) {
-    psy_abort(paste("reviews is missing:", paste(missing, collapse = ", ")),
-              "psy_error_schema")
+    if (!NROW(out) && !NROW(reviews) && !length(names(reviews))) {
+      reviews$event_id <- character()
+      reviews$disposition <- character()
+      reviews$reviewed_at <- as.POSIXct(character(), tz = "UTC")
+    } else {
+      psy_abort(paste("reviews is missing:", paste(missing, collapse = ", ")),
+                "psy_error_schema")
+    }
   }
-  reviews <- as.data.frame(reviews, stringsAsFactors = FALSE)
-  reviews$reviewed_at <- time_vector(reviews$reviewed_at)
+  review_event_ids <- as.character(reviews$event_id)
+  invalid_review_event_ids <- is.na(review_event_ids) |
+    !nzchar(trimws(review_event_ids))
+  if (any(invalid_review_event_ids)) {
+    psy_abort(
+      "reviews$event_id must contain non-missing, non-empty values.",
+      "psy_error_schema"
+    )
+  }
+  reviews$event_id <- review_event_ids
+
+  dispositions <- as.character(reviews$disposition)
+  invalid_dispositions <- is.na(dispositions) |
+    !dispositions %in% .psy_review_dispositions
+  if (any(invalid_dispositions)) {
+    psy_abort(
+      paste0(
+        "reviews$disposition must contain only: ",
+        paste(.psy_review_dispositions, collapse = ", "), "."
+      ),
+      "psy_error_schema"
+    )
+  }
+  reviews$disposition <- dispositions
+
+  reviewed_at <- tryCatch(
+    time_vector(reviews$reviewed_at),
+    error = function(e) NULL
+  )
+  invalid_reviewed_at <- is.null(reviewed_at) ||
+    length(reviewed_at) != NROW(reviews) || anyNA(reviewed_at) ||
+    any(!is.finite(as.numeric(reviewed_at)))
+  if (invalid_reviewed_at) {
+    psy_abort(
+      "reviews$reviewed_at must contain valid, non-missing UTC times.",
+      "psy_error_schema"
+    )
+  }
+  reviews$reviewed_at <- reviewed_at
+
+  if (!NROW(out) || !NROW(reviews)) return(new_psy_df(out, "psy_event"))
   for (i in seq_len(NROW(out))) {
-    keep <- !is.na(reviews$event_id) & reviews$event_id == out$event_id[i]
+    keep <- reviews$event_id == out$event_id[i]
     z <- reviews[keep, , drop = FALSE]
     if (!NROW(z)) next
     z <- z[order(z$reviewed_at, na.last = TRUE), , drop = FALSE]

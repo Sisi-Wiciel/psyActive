@@ -84,6 +84,90 @@ first_observed_at <- function(x) {
   if (!any(good)) as.POSIXct(NA, origin = "1970-01-01", tz = "UTC") else min(x[good])
 }
 
+canonical_scoring_rows <- function(x) {
+  out <- as.data.frame(x, stringsAsFactors = FALSE)
+  rownames(out) <- NULL
+  if (NROW(out) < 2L) return(out)
+
+  preferred <- c(
+    "instrument_id", "instrument_version", "person_id", "assessment_id",
+    "score_name", "score_id", "observation_id", "item_id"
+  )
+  fields <- c(intersect(preferred, names(out)),
+              sort(setdiff(names(out), preferred)))
+  keys <- lapply(out[fields], function(value) {
+    if (inherits(value, "POSIXt")) value <- as.numeric(value)
+    value <- as.character(value)
+    missing <- is.na(value)
+    value[missing] <- ""
+    paste0(ifelse(missing, "0:", "1:"), enc2utf8(value))
+  })
+  order_rows <- do.call(order, c(keys, list(method = "radix")))
+  out <- out[order_rows, , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+scoring_source_rows <- function(x) {
+  n <- NROW(x)
+  observed_at <- if (inherits(x$observed_at, "POSIXt")) {
+    as.numeric(x$observed_at)
+  } else {
+    as.character(x$observed_at)
+  }
+  canonical_scoring_rows(data.frame(
+    person_id = as.character(x$person_id),
+    assessment_id = as.character(x$assessment_id),
+    episode_id = if ("episode_id" %in% names(x)) {
+      as.character(x$episode_id)
+    } else {
+      rep(NA_character_, n)
+    },
+    observed_at = observed_at,
+    instrument_id = as.character(x$instrument_id),
+    instrument_version = as.character(x$instrument_version),
+    observation_id = if ("observation_id" %in% names(x)) {
+      as.character(x$observation_id)
+    } else {
+      rep(NA_character_, n)
+    },
+    item_id = as.character(x$item_id),
+    value_raw = as.character(x$.psy_input_value_raw),
+    value_num = as.numeric(x$.psy_input_value_num),
+    invalid = as.logical(x$.psy_invalid),
+    stringsAsFactors = FALSE
+  ))
+}
+
+scoring_episode_id <- function(x) {
+  values <- as.character(x$episode_id)
+  blank <- !is.na(values) & !nzchar(trimws(values))
+  if (any(blank)) {
+    psy_abort(
+      "episode_id must not contain blank values within a scoring assessment.",
+      "psy_error_schema"
+    )
+  }
+  if (all(is.na(values))) return(NA_character_)
+  if (any(is.na(values))) {
+    psy_abort(
+      paste0(
+        "episode_id must either be missing on every row or be non-missing ",
+        "and consistent within a scoring assessment."
+      ),
+      "psy_error_schema"
+    )
+  }
+  values <- unique(values)
+  if (length(values) != 1L) {
+    psy_abort(
+      "episode_id must be consistent within a scoring assessment.",
+      "psy_error_schema"
+    )
+  }
+  values
+}
+
 #' Score a Registered Instrument
 #' @param x Standard observations.
 #' @param instrument Instrument object, path, or registered ID.
@@ -92,6 +176,19 @@ first_observed_at <- function(x) {
 #' @param on_invalid Invalid-value policy.
 #' @param audit Attach an audit record.
 #' @return A `psy_score` data frame.
+#' @details The per-score `input_hash` covers a canonical, row-order-independent
+#' representation of the matched observation IDs (when supplied), item IDs,
+#' raw and numeric inputs, values remaining after the invalid-value policy,
+#' transformed scoring values, and the instrument ID and version. The attached
+#' audit record uses the same canonical scoring material together with all
+#' matched observations.
+#'
+#' If `x` contains `episode_id`, every scoring assessment must either use one
+#' non-blank episode ID on every row or have `NA` on every row. A single ID or
+#' the all-missing value is propagated to each score row; mixed missing and
+#' non-missing IDs, blank IDs, and conflicting IDs are rejected. Non-missing
+#' propagated IDs can be used directly with
+#' `reliable_change(from = "episode_start")`.
 #' @export
 score_instrument <- function(x, instrument, registry = psy_registry(),
                              scores = NULL,
@@ -119,6 +216,13 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
               "psy_error_scoring")
   }
 
+  dat$.psy_input_value_raw <- if ("value_raw" %in% names(dat)) {
+    as.character(dat$value_raw)
+  } else {
+    rep(NA_character_, NROW(dat))
+  }
+  dat$.psy_input_value_num <- suppressWarnings(as.numeric(dat$value_num))
+
   item_ids <- vapply(inst$items, function(z) as.character(z$item_id %||% "")[1L],
                      character(1))
   item_defs <- stats::setNames(inst$items, item_ids)
@@ -129,7 +233,7 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
       invalid[i] <- TRUE
       next
     }
-    value <- suppressWarnings(as.numeric(dat$value_num[i]))
+    value <- dat$.psy_input_value_num[i]
     if (is.nan(value) || (!is.na(value) && !is.finite(value))) {
       invalid[i] <- TRUE
       next
@@ -146,6 +250,8 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
       invalid[i] <- TRUE
     }
   }
+  dat$.psy_invalid <- invalid
+  source_dat <- dat
 
   quality <- new_quality()
   if (any(invalid)) {
@@ -197,11 +303,27 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
     drop = TRUE, lex.order = TRUE, sep = "\u001f"
   )
   groups <- split(dat, group_key)
+  source_group_key <- interaction(
+    as.character(source_dat$person_id), as.character(source_dat$assessment_id),
+    as.character(source_dat$instrument_id),
+    as.character(source_dat$instrument_version),
+    drop = TRUE, lex.order = TRUE, sep = "\u001f"
+  )
+  source_groups <- split(source_dat, source_group_key)
+  has_episode_id <- "episode_id" %in% names(source_dat)
   rows <- list()
   explanations <- list()
+  input_materials <- list()
   k <- 0L
   e <- 0L
-  for (group in groups) {
+  for (group_name in names(groups)) {
+    group <- groups[[group_name]]
+    source_group <- source_groups[[group_name]]
+    episode_id <- if (has_episode_id) {
+      scoring_episode_id(source_group)
+    } else {
+      NULL
+    }
     if (anyDuplicated(as.character(group$item_id))) {
       psy_abort("Duplicate item IDs were found within an assessment.",
                 "psy_error_scoring")
@@ -225,15 +347,19 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
       positions <- match(ids, as.character(group$item_id))
       found <- !is.na(positions)
       raw_values <- rep(NA_character_, length(ids))
+      input_numeric_values <- rep(NA_real_, length(ids))
       numeric_values <- rep(NA_real_, length(ids))
       observation_ids <- rep(NA_character_, length(ids))
-      if ("value_raw" %in% names(group)) raw_values[found] <- as.character(group$value_raw[positions[found]])
+      raw_values[found] <- group$.psy_input_value_raw[positions[found]]
+      input_numeric_values[found] <- group$.psy_input_value_num[positions[found]]
       numeric_values[found] <- suppressWarnings(as.numeric(group$value_num[positions[found]]))
       if ("observation_id" %in% names(group)) observation_ids[found] <- as.character(group$observation_id[positions[found]])
       values <- numeric_values
+      reversed <- logical(length(ids))
       for (j in seq_along(ids)) {
         definition <- item_defs[[ids[j]]]
         if (!is.null(definition$reverse)) {
+          reversed[j] <- TRUE
           minimum <- suppressWarnings(as.numeric(definition$reverse$min))[1L]
           maximum <- suppressWarnings(as.numeric(definition$reverse$max))[1L]
           if (is.finite(minimum) && is.finite(maximum)) {
@@ -249,7 +375,43 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
         "score", group$person_id[1L], group$assessment_id[1L],
         inst$instrument_id, inst$version, score_name
       )
-      rows[[k]] <- data.frame(
+      item_weights <- vapply(seq_along(ids), function(j) {
+        if (!is.null(spec$weights)) {
+          suppressWarnings(as.numeric(unlist(spec$weights)))[j]
+        } else {
+          1
+        }
+      }, numeric(1))
+      score_material <- canonical_scoring_rows(data.frame(
+        score_id = score_id,
+        person_id = as.character(group$person_id[1L]),
+        assessment_id = as.character(group$assessment_id[1L]),
+        episode_id = if (has_episode_id) episode_id else NA_character_,
+        instrument_id = inst$instrument_id,
+        instrument_version = inst$version,
+        score_name = score_name,
+        observation_id = observation_ids,
+        item_id = ids,
+        value_raw = raw_values,
+        value_num = input_numeric_values,
+        scoring_value = numeric_values,
+        transformed_value = values,
+        included_after_policy = found,
+        reversed = reversed,
+        weight = item_weights,
+        operation = as.character(spec$operation %||% "")[1L],
+        stringsAsFactors = FALSE
+      ))
+      score_source <- scoring_source_rows(source_group)
+      score_source <- canonical_scoring_rows(
+        score_source[score_source$item_id %in% ids, , drop = FALSE]
+      )
+      score_input_hash <- stable_hash(list(
+        observations = score_source,
+        scoring_values = score_material
+      ))
+      input_materials[[k]] <- score_material
+      score_row <- data.frame(
         score_id = score_id, person_id = as.character(group$person_id[1L]),
         assessment_id = as.character(group$assessment_id[1L]),
         observed_at = first_observed_at(group$observed_at),
@@ -261,20 +423,26 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
         answered_n = as.integer(result$answered),
         missing_n = as.integer(result$missing), prorated = result$prorated,
         score_status = result$status, scoring_version = inst$version,
-        input_hash = stable_hash(sort(observation_ids[!is.na(observation_ids)])),
+        input_hash = score_input_hash,
         computed_at = computed, stringsAsFactors = FALSE
       )
+      if (has_episode_id) {
+        score_row$episode_id <- episode_id
+        score_row <- score_row[c(
+          "score_id", "person_id", "assessment_id", "episode_id",
+          setdiff(names(score_row),
+                  c("score_id", "person_id", "assessment_id", "episode_id"))
+        )]
+      }
+      rows[[k]] <- score_row
       for (j in seq_along(ids)) {
         e <- e + 1L
-        weights <- if (!is.null(spec$weights)) {
-          suppressWarnings(as.numeric(unlist(spec$weights)))[j]
-        } else 1
         explanations[[e]] <- data.frame(
           score_id = score_id, item_id = ids[j],
           value_raw = raw_values[j], value_num = numeric_values[j],
           transformed_value = values[j],
-          reversed = !is.null(item_defs[[ids[j]]]$reverse),
-          weight = weights, missing = is.na(values[j]),
+          reversed = reversed[j],
+          weight = item_weights[j], missing = is.na(values[j]),
           operation = as.character(spec$operation %||% "")[1L],
           scoring_version = inst$version,
           stringsAsFactors = FALSE
@@ -287,8 +455,14 @@ score_instrument <- function(x, instrument, registry = psy_registry(),
     do.call(rbind, explanations)
   } else data.frame()
   if (audit) {
+    audit_input <- list(
+      instrument_id = inst$instrument_id,
+      instrument_version = inst$version,
+      matched_observations = scoring_source_rows(source_dat),
+      scoring_values = canonical_scoring_rows(do.call(rbind, input_materials))
+    )
     attr(out, "audit") <- new_audit(
-      "score_instrument", x, out,
+      "score_instrument", audit_input, out,
       list(instrument = inst$instrument_id, version = inst$version,
            on_invalid = on_invalid), NROW(quality)
     )

@@ -96,3 +96,21 @@ test_that("default checks report checks that cannot run", {
   expect_true(all(c("range", "timing") %in% quality$check_id))
   expect_true(all(quality$severity[quality$check_id %in% c("range", "timing")] == "info"))
 })
+
+test_that("duplicate observation checks distinguish people and source records", {
+  raw <- data.frame(
+    person = c("p1", "p2", "p1"), assessment = c("same-id", "same-id", "same-id"),
+    time = "2026-01-01 12:00:00", tz = "UTC",
+    item = c("dms_1", "dms_1", "dms_1"), value = c(1, 2, 1),
+    record = c("r1", "r2", "r1")
+  )
+  observation <- as_psy_observation(
+    raw, observation_mapping(), source_system = "test", strict = FALSE
+  )
+  quality <- validate_observation(observation[1:2, , drop = FALSE])
+  expect_false(any(quality$check_id == "duplicates"))
+
+  duplicate <- observation[c(1L, 3L), , drop = FALSE]
+  quality <- validate_observation(duplicate)
+  expect_true(any(quality$check_id == "duplicates"))
+})

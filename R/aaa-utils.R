@@ -25,53 +25,120 @@ as_utc <- function(x, timezone = NULL) {
   if (length(x) == 0L) {
     return(as.POSIXct(character(), tz = "UTC"))
   }
+  values <- if (inherits(x, "Date")) as.character(x) else as.character(x)
+  explicit_offset <- !is.na(values) & grepl(
+    "(?:Z|[+-][0-9]{2}:?[0-9]{2})$", values, perl = TRUE
+  )
+
   if (is.null(timezone) || length(timezone) == 0L) {
-    psy_abort(
-      "A source timezone is required when a timestamp has no timezone.",
-      "psy_error_schema"
-    )
-  }
-  if (length(timezone) == 1L) timezone <- rep(timezone, length(x))
-  if (length(timezone) != length(x)) {
-    psy_abort(
-      "source_timezone must contain one value or one value per timestamp.",
-      "psy_error_schema"
-    )
-  }
-  timezone <- as.character(timezone)
-  bad_timezone <- is.na(timezone) | !nzchar(timezone) |
-    !(timezone %in% OlsonNames())
-  if (any(bad_timezone)) {
-    psy_abort(
-      paste0(
-        "source_timezone must contain valid IANA timezone names. Invalid value(s): ",
-        paste(unique(timezone[bad_timezone]), collapse = ", ")
-      ),
-      "psy_error_schema"
-    )
+    if (any(!is.na(values) & !explicit_offset)) {
+      psy_abort(
+        "A source timezone is required when a timestamp has no explicit offset.",
+        "psy_error_schema"
+      )
+    }
+    timezone <- rep("UTC", length(values))
+  } else {
+    if (length(timezone) == 1L) timezone <- rep(timezone, length(values))
+    if (length(timezone) != length(values)) {
+      psy_abort(
+        "source_timezone must contain one value or one value per timestamp.",
+        "psy_error_schema"
+      )
+    }
+    timezone <- as.character(timezone)
+    bad_timezone <- is.na(timezone) | !nzchar(timezone) |
+      !(timezone %in% OlsonNames())
+    if (any(bad_timezone)) {
+      psy_abort(
+        paste0(
+          "source_timezone must contain valid IANA timezone names. Invalid value(s): ",
+          paste(unique(timezone[bad_timezone]), collapse = ", ")
+        ),
+        "psy_error_schema"
+      )
+    }
   }
 
-  values <- if (inherits(x, "Date")) as.character(x) else as.character(x)
   if (length(values) != length(timezone)) {
     psy_abort(
       "Timestamps must contain one value or one value per source timezone.",
       "psy_error_schema"
     )
   }
+  offset_values <- values
+  offset_values[explicit_offset] <- sub(
+    "([+-][0-9]{2}):([0-9]{2})$", "\\1\\2",
+    sub("Z$", "+0000", offset_values[explicit_offset], perl = TRUE),
+    perl = TRUE
+  )
+
+  parse_naive <- function(value, tz) {
+    if (grepl("^\\d{4}-\\d{2}-\\d{2}$", value, perl = TRUE)) {
+      format <- "%Y-%m-%d"
+    } else if (grepl(
+      "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?$",
+      value, perl = TRUE
+    )) {
+      format <- "%Y-%m-%d %H:%M:%OS"
+    } else if (grepl(
+      "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?$",
+      value, perl = TRUE
+    )) {
+      format <- "%Y-%m-%dT%H:%M:%OS"
+    } else {
+      return(NA_real_)
+    }
+    parsed <- tryCatch(
+      as.POSIXct(strptime(value, format = format, tz = tz)),
+      error = function(e) as.POSIXct(NA_real_, origin = "1970-01-01", tz = tz)
+    )
+    as.numeric(parsed)
+  }
+
+  parse_offset <- function(value) {
+    parts <- regmatches(
+      value,
+      regexec("^(.*)(Z|[+-][0-9]{2}:?[0-9]{2})$", value, perl = TRUE)
+    )[[1L]]
+    if (length(parts) != 3L) return(NA_real_)
+    local <- parts[2L]
+    token <- parts[3L]
+    if (!grepl(
+      "^\\d{4}-\\d{2}-\\d{2}(?: |T)\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?$",
+      local, perl = TRUE
+    )) {
+      return(NA_real_)
+    }
+    local_format <- if (grepl("T", local, fixed = TRUE)) {
+      "%Y-%m-%dT%H:%M:%OS"
+    } else {
+      "%Y-%m-%d %H:%M:%OS"
+    }
+    local_time <- tryCatch(
+      as.POSIXct(strptime(local, format = local_format, tz = "UTC")),
+      error = function(e) as.POSIXct(NA_real_, origin = "1970-01-01", tz = "UTC")
+    )
+    if (is.na(local_time)) return(NA_real_)
+    if (identical(token, "Z")) return(as.numeric(local_time))
+    token <- sub(":", "", token, fixed = TRUE)
+    hours <- suppressWarnings(as.integer(substr(token, 2L, 3L)))
+    minutes <- suppressWarnings(as.integer(substr(token, 4L, 5L)))
+    if (is.na(hours) || is.na(minutes) || hours > 23L || minutes > 59L) {
+      return(NA_real_)
+    }
+    sign <- if (substr(token, 1L, 1L) == "-") -1 else 1
+    as.numeric(local_time) - sign * (hours * 3600 + minutes * 60)
+  }
+
   parsed <- vapply(seq_along(values), function(i) {
     if (is.na(values[i])) return(NA_real_)
-    value <- tryCatch(
-      as.POSIXct(
-        values[i], tz = timezone[i],
-        tryFormats = c(
-          "%Y-%m-%d %H:%M:%OS", "%Y-%m-%dT%H:%M:%OS", "%Y-%m-%d"
-        )
-      ),
-      error = function(e) {
-        as.POSIXct(NA_real_, origin = "1970-01-01", tz = timezone[i])
-      }
-    )
-    as.numeric(value)
+    if (explicit_offset[i]) {
+      value <- parse_offset(offset_values[i])
+    } else {
+      value <- parse_naive(values[i], timezone[i])
+    }
+    value
   }, numeric(1))
   if (any(is.na(parsed) & !is.na(values))) {
     psy_abort("Some timestamps could not be parsed.", "psy_error_schema")

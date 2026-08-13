@@ -38,12 +38,29 @@ interpret_score(x, reference, registry = psy_registry(),
 }
 \value{
 \code{score_instrument()} returns a \code{psy_score} data frame with one row
-per assessment and requested score. \code{explain_score()} returns item-level
-inputs and transformations. \code{interpret_score()} returns a
-\code{psy_score} with reference, severity-band, minimal-change, and status
-columns.
+per assessment and requested score. If the input contains \code{episode_id},
+the output also contains the validated assessment-level episode identifier.
+\code{explain_score()} returns item-level inputs and transformations.
+\code{interpret_score()} returns a \code{psy_score} with reference,
+severity-band, minimal-change, and status columns.
 }
 \details{
+The per-score \code{input_hash} covers a canonical, row-order-independent
+representation of the matched observation IDs (when supplied), item IDs, raw
+and numeric inputs, values remaining after the invalid-value policy,
+transformed scoring values, and the instrument ID and version. The attached
+audit record uses the same canonical scoring material together with all
+matched observations. Consequently, changing a scoring input changes the
+corresponding hash even when observation IDs are unchanged.
+
+If \code{x} contains \code{episode_id}, every person, assessment, instrument,
+and instrument-version group must either use one non-blank episode ID on every
+row or have \code{NA} on every row. A single ID or the all-missing value is
+propagated to each score row. Mixed missing and non-missing IDs, blank IDs, and
+conflicting IDs are schema errors. Non-missing propagated IDs can be used
+directly with \code{reliable_change(from = "episode_start")}; all-missing
+episode IDs remain explicit and are rejected by that comparison mode.
+
 Interpretation bands are descriptive outputs of the selected definition. They
 are not diagnoses or treatment recommendations. Bundled definitions and
 reference values are fictional demonstrations only.

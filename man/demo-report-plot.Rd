@@ -41,8 +41,9 @@ render_psy_report(data, person_id = NULL,
   PDF stops with instructions to configure an external workflow.}
   \item{output_dir}{Directory in which report artifacts are written.}
   \item{template}{Reserved custom template argument.}
-  \item{include_audit}{If \code{TRUE}, also write attached audit records to
-  CSV.}
+  \item{include_audit}{If \code{TRUE}, write an audit CSV. Patient-filtered
+  reports contain a report-scope audit derived only from the filtered sections;
+  upstream audit rows are included only for unfiltered reports.}
   \item{quiet}{If \code{FALSE}, announce the report path.}
 }
 \value{
@@ -57,7 +58,14 @@ used in demonstrations are synthetic. Reports are decision-support artifacts,
 not diagnoses or treatment recommendations. The \code{events},
 \code{reference}, \code{timezone}, and \code{template} arguments are reserved
 for richer rendering in future versions and do not currently change the core
-output where noted.
+output where noted. With a person filter, reviews without a \code{person_id}
+are included only when their \code{event_id} unambiguously links to an event
+for the selected person. If two reports are generated in the same UTC second,
+the later artifact name receives a numeric suffix. The manifest contains the
+report SHA-256 hash and, when an audit CSV is requested, its SHA-256 hash. A
+report-scope audit row hashes the exact filtered sections used for rendering.
+To avoid carrying cohort-level provenance into a patient report, attached
+upstream audit rows are copied only when \code{person_id} is \code{NULL}.
 }
 \examples{
 obs <- psy_demo_data(n_people = 1, n_assessments = 2, seed = 5)

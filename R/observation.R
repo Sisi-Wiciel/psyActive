@@ -77,10 +77,29 @@ source_timezones <- function(x, mapping, observed_raw, timezone) {
     rep(NA_character_, NROW(x))
   }
   input_timezone <- attr(observed_raw, "tzone")
-  input_timezone <- if (length(input_timezone) && nzchar(input_timezone[1L])) {
-    input_timezone[1L]
+  input_timezone <- if (length(input_timezone) &&
+                        !is.na(input_timezone[1L]) &&
+                        nzchar(input_timezone[1L])) {
+    as.character(input_timezone[1L])
   } else {
     NULL
+  }
+  if (inherits(observed_raw, "POSIXt") && !is.null(input_timezone)) {
+    if (!(input_timezone %in% OlsonNames())) {
+      psy_abort(
+        "POSIXct/POSIXlt timestamps must carry a valid IANA timezone attribute.",
+        "psy_error_schema"
+      )
+    }
+    if (!is.null(timezone) && !identical(as.character(timezone), input_timezone)) {
+      psy_abort(
+        paste0(
+          "timezone conflicts with the timezone attribute carried by the ",
+          "POSIXct/POSIXlt timestamps."
+        ),
+        "psy_error_schema"
+      )
+    }
   }
   fallback <- timezone %||% input_timezone
   missing <- is.na(mapped) | !nzchar(mapped)
@@ -105,10 +124,10 @@ source_timezones <- function(x, mapping, observed_raw, timezone) {
       "psy_error_schema"
     )
   }
-  if (inherits(observed_raw, "POSIXt") && has_mapped_timezone) {
+  if (inherits(observed_raw, "POSIXt") && !is.null(input_timezone)) {
     mapped_unique <- unique(mapped)
     if (length(mapped_unique) != 1L ||
-        (length(input_timezone) && !identical(mapped_unique, input_timezone))) {
+        !identical(mapped_unique, input_timezone)) {
       psy_abort(
         paste0(
           "A POSIXct/POSIXlt vector represents absolute instants with one timezone attribute; ",
@@ -134,7 +153,10 @@ mapped_source_names <- function(mapping, source_names) {
 #' Direct identifiers should be removed before calling this function.
 #' @param x A data frame.
 #' @param mapping Named list mapping standard fields to source column names or constants.
-#' @param timezone IANA source timezone when source times are not already POSIXct.
+#' @param timezone Optional scalar IANA source timezone. It is required for
+#'   naive character or `Date` timestamps unless `source_timezone` is mapped.
+#'   For `POSIXct`/`POSIXlt` input, it must agree with any non-empty timezone
+#'   attribute already carried by the object.
 #' @param source_system Non-empty source-system identifier.
 #' @param strict If `TRUE`, stop when schema errors are present.
 #' @param keep_unmapped Retain source columns in an `unmapped` attribute.
@@ -182,7 +204,12 @@ as_psy_observation <- function(x, mapping, timezone = NULL, source_system, stric
     ingested_at=rep(now_utc(),n), stringsAsFactors=FALSE)
   fill_raw <- is.na(out$value_raw) & !is.na(out$value_num)
   out$value_raw[fill_raw] <- as.character(out$value_num[fill_raw])
-  out$observation_id <- vapply(seq_len(n), function(i) stable_id("obs",out$source_system[i],out$assessment_id[i],out$item_id[i],format(out$observed_at[i],tz="UTC",usetz=TRUE)), character(1))
+  out$observation_id <- vapply(seq_len(n), function(i) {
+    stable_id(
+      "obs", out$person_id[i], out$record_id[i], out$assessment_id[i],
+      out$item_id[i], out$source_system[i], as.numeric(out$observed_at[i])
+    )
+  }, character(1))
   out <- new_psy_df(out,"psy_observation")
   q <- validate_observation(out, level="schema")
   attr(out,"problems") <- q
@@ -217,8 +244,13 @@ validate_observation <- function(x, registry = NULL, level = c("schema","registe
   if (any(bad_missing)) {k<-k+1L;q[[k]]<-make_quality("schema_missing_reason","error",row_id=paste(which(bad_missing),collapse=","),field="missing_reason",message="Unknown missing-reason code.",suggestion=paste("Use one of:",paste(.psy_missing_reasons,collapse=", ")))}
   non_finite <- !is.na(x$value_num) & !is.finite(x$value_num)
   if (any(non_finite)) {k<-k+1L;q[[k]]<-make_quality("schema_non_finite","error",row_id=paste(which(non_finite),collapse=","),field="value_num",message="value_num must contain finite values or NA.",suggestion="Replace infinite and NaN values with valid values or a missing reason.")}
-  dup <- duplicated(x[c("source_system","assessment_id","item_id")]) | duplicated(x[c("source_system","assessment_id","item_id")],fromLast=TRUE)
-  if (any(dup)) {k<-k+1L;q[[k]]<-make_quality("duplicates","error",row_id=paste(which(dup),collapse=","),message="Duplicate source_system + assessment_id + item_id keys.",suggestion="Resolve duplicate source records before scoring.")}
+  duplicate_key <- c(
+    "source_system", "person_id", "record_id", "assessment_id",
+    "instrument_id", "instrument_version", "item_id"
+  )
+  dup <- duplicated(x[duplicate_key]) |
+    duplicated(x[duplicate_key], fromLast = TRUE)
+  if (any(dup)) {k<-k+1L;q[[k]]<-make_quality("duplicates","error",row_id=paste(which(dup),collapse=","),message="Duplicate source record + person + assessment + instrument + item keys.",suggestion="Resolve duplicate source records before scoring.")}
   if (!inherits(x$observed_at,"POSIXct")) {k<-k+1L;q[[k]]<-make_quality("schema_time_type","error",field="observed_at",message="observed_at must be POSIXct.",suggestion="Use as_psy_observation() with an explicit timezone.")}
   bad_timezone <- !is.na(x$source_timezone) &
     (!nzchar(x$source_timezone) | !(x$source_timezone %in% OlsonNames()))
