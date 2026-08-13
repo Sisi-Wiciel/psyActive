@@ -1,6 +1,11 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.git$
+^\.gitignore$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
 ^\.github$
 ^tools$
+^psyActive_[0-9.]+\.tar\.gz$
+^psyActive\.Rcheck$
+^revdep$

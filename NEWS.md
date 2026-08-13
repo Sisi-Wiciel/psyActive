@@ -1,9 +1,13 @@
 # psyActive 0.1.0
 
-* First public candidate release.
-* Added a standard item-level longitudinal observation contract.
-* Added declarative demonstration instrument, reference, and rules registries.
-* Added scoring, interpretation, quality assessment, personal baselines,
-  reliable change, persistent-shift events, rules, reviews, plots, and HTML
-  reporting.
-* All bundled clinical-looking content is explicitly synthetic and demo-only.
+* Initial public candidate release.
+* Provides a standard item-level longitudinal observation contract and
+  explicit timezone handling.
+* Adds versioned declarative instrument, reference, and workflow-rule
+  definitions with local registries and scoring provenance.
+* Adds quality assessment, score interpretation, immutable personal
+  baselines, reliable-change calculations, persistent-shift events, human
+  review records, plots, and auditable HTML reports.
+* Ships only fictional demonstration content. Bundled instruments, reference
+  values, and rules are not validated clinical tools and must not be used for
+  diagnosis, treatment, prescribing, or autonomous crisis decisions.

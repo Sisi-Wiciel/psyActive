@@ -19,14 +19,64 @@ psy_warn <- function(message, class = "psy_warning", ...) {
 }
 
 as_utc <- function(x, timezone = NULL) {
-  if (inherits(x, "POSIXct")) return(as.POSIXct(format(x, tz = "UTC", usetz = TRUE), tz = "UTC"))
-  if (inherits(x, "Date")) return(as.POSIXct(x, tz = timezone %||% "UTC"))
-  if (is.null(timezone) || !nzchar(timezone)) {
-    psy_abort("A source timezone is required when observed_at is not POSIXct.", "psy_error_schema")
+  if (inherits(x, "POSIXt")) {
+    return(as.POSIXct(as.numeric(x), origin = "1970-01-01", tz = "UTC"))
   }
-  out <- as.POSIXct(x, tz = timezone, tryFormats = c("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"))
-  if (anyNA(out) && any(!is.na(x))) psy_abort("Some timestamps could not be parsed.", "psy_error_schema")
-  as.POSIXct(format(out, tz = "UTC", usetz = TRUE), tz = "UTC")
+  if (length(x) == 0L) {
+    return(as.POSIXct(character(), tz = "UTC"))
+  }
+  if (is.null(timezone) || length(timezone) == 0L) {
+    psy_abort(
+      "A source timezone is required when a timestamp has no timezone.",
+      "psy_error_schema"
+    )
+  }
+  if (length(timezone) == 1L) timezone <- rep(timezone, length(x))
+  if (length(timezone) != length(x)) {
+    psy_abort(
+      "source_timezone must contain one value or one value per timestamp.",
+      "psy_error_schema"
+    )
+  }
+  timezone <- as.character(timezone)
+  bad_timezone <- is.na(timezone) | !nzchar(timezone) |
+    !(timezone %in% OlsonNames())
+  if (any(bad_timezone)) {
+    psy_abort(
+      paste0(
+        "source_timezone must contain valid IANA timezone names. Invalid value(s): ",
+        paste(unique(timezone[bad_timezone]), collapse = ", ")
+      ),
+      "psy_error_schema"
+    )
+  }
+
+  values <- if (inherits(x, "Date")) as.character(x) else as.character(x)
+  if (length(values) != length(timezone)) {
+    psy_abort(
+      "Timestamps must contain one value or one value per source timezone.",
+      "psy_error_schema"
+    )
+  }
+  parsed <- vapply(seq_along(values), function(i) {
+    if (is.na(values[i])) return(NA_real_)
+    value <- tryCatch(
+      as.POSIXct(
+        values[i], tz = timezone[i],
+        tryFormats = c(
+          "%Y-%m-%d %H:%M:%OS", "%Y-%m-%dT%H:%M:%OS", "%Y-%m-%d"
+        )
+      ),
+      error = function(e) {
+        as.POSIXct(NA_real_, origin = "1970-01-01", tz = timezone[i])
+      }
+    )
+    as.numeric(value)
+  }, numeric(1))
+  if (any(is.na(parsed) & !is.na(values))) {
+    psy_abort("Some timestamps could not be parsed.", "psy_error_schema")
+  }
+  as.POSIXct(parsed, origin = "1970-01-01", tz = "UTC")
 }
 
 stable_hash <- function(x) digest::digest(x, algo = "sha256", serialize = TRUE)
@@ -36,7 +86,8 @@ now_utc <- function() as.POSIXct(format(Sys.time(), tz = "UTC", usetz = TRUE), t
 new_psy_df <- function(x, class, problems = NULL, audit = NULL) {
   x <- as.data.frame(x, stringsAsFactors = FALSE)
   class(x) <- c(class, "data.frame")
-  attr(x, "problems") <- problems %||% new_quality()
+  if (is.null(problems)) problems <- new_quality()
+  attr(x, "problems") <- problems
   attr(x, "audit") <- audit
   x
 }
@@ -44,7 +95,18 @@ new_quality <- function(x = NULL) {
   if (is.null(x)) x <- data.frame(check_id=character(), severity=character(), row_id=character(),
                                   field=character(), message=character(), suggestion=character(),
                                   stringsAsFactors=FALSE)
-  new_psy_df(x, "psy_quality", problems = data.frame())
+  x <- as.data.frame(x, stringsAsFactors = FALSE)
+  required <- c("check_id", "severity", "row_id", "field", "message", "suggestion")
+  missing <- setdiff(required, names(x))
+  if (length(missing)) {
+    psy_abort(
+      paste0("Quality data is missing required field(s): ", paste(missing, collapse = ", "), "."),
+      "psy_error_schema"
+    )
+  }
+  x <- x[required]
+  class(x) <- c("psy_quality", "data.frame")
+  x
 }
 make_quality <- function(check_id, severity, row_id = NA_character_, field = NA_character_, message, suggestion = NA_character_) {
   data.frame(check_id=as.character(check_id), severity=as.character(severity), row_id=as.character(row_id),
@@ -52,7 +114,17 @@ make_quality <- function(check_id, severity, row_id = NA_character_, field = NA_
              stringsAsFactors=FALSE)
 }
 append_quality <- function(...) {
-  xs <- Filter(function(z) !is.null(z) && NROW(z)>0L, list(...))
+  flatten <- function(x) {
+    if (is.null(x)) return(list())
+    if (is.data.frame(x)) return(list(x))
+    if (is.list(x)) return(unlist(lapply(x, flatten), recursive = FALSE))
+    psy_abort(
+      "Quality results must be data frames, lists of data frames, or NULL.",
+      "psy_error_schema"
+    )
+  }
+  xs <- unlist(lapply(list(...), flatten), recursive = FALSE)
+  xs <- Filter(function(z) NROW(z) > 0L, xs)
   if (!length(xs)) return(new_quality())
   new_quality(do.call(rbind, lapply(xs, as.data.frame)))
 }
