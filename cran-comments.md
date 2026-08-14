@@ -10,22 +10,21 @@
 The R 4.5.2 check reported:
 
 * 0 errors | 0 warnings | 2 notes
-* Incoming feasibility reports that this is a new submission.
-* Pandoc was unavailable, so `README.md` and `NEWS.md` rendering was not
-  checked.
+* One note is the expected `New submission` note.
+* One environment-specific note reports that the local machine was unable to
+  verify the current time. The package contains no future-dated files.
 
 The isolated R 4.6.1 check, with Pandoc 3.7.0.2 available, reported:
 
 * 0 errors | 0 warnings | 1 note
 * The only note is the expected `New submission` note.
-* The testthat suite reported 213 passes, 0 failures, 0 warnings, and 0 skips.
+* The testthat suite reported 242 passes, 0 failures, 0 warnings, and 0 skips.
+
+Both checks used the exact same source tarball and completed the testthat suite
+with 242 passes, 0 failures, 0 warnings, and 0 skips.
 
 Source tarball checked: `psyActive_0.1.0.tar.gz`
-SHA-256: `3fd1a1787ea038862ce4107f4af9a8ce0576b14251d372c18f6f917cb785d730`
-
-The R 4.6.1 result was obtained from an independent build of the same source
-commit. Its source tree was byte-for-byte identical to the delivery tarball
-apart from the build-generated `Packaged` timestamp in `DESCRIPTION`.
+SHA-256: `70e43d0dff9c492b9cbb40945e79f8fc7559f7d10ed476c740e5b00f646b6df6`
 
 ## Maintainer
 

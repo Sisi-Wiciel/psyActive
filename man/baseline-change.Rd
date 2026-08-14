@@ -35,8 +35,9 @@ detect_change(x, baseline = NULL,
   \item{confidence}{Confidence level used for reliable-change thresholds.}
   \item{x}{A \code{psy_score} object, or metric data containing
   \code{person_id}, \code{metric_id}, \code{value}, and
-  \code{observed_at} where supported. For \code{reliable_change()}, score
-  data must also include \code{instrument_id} and \code{instrument_version}.}
+  \code{observed_at} where supported. For \code{reliable_change()}, every
+  row must also identify the applicable \code{instrument_id} and
+  \code{instrument_version}.}
   \item{metrics}{Optional metric identifier subset.}
   \item{window}{Optional length-two time window used to freeze baseline data.}
   \item{method}{Baseline center and scale estimator.}
@@ -44,7 +45,8 @@ detect_change(x, baseline = NULL,
   \item{zero_scale}{Policy when the baseline has zero variance.}
   \item{audit}{If \code{TRUE}, attach an audit record.}
   \item{reference}{A \code{psy_reference} object or YAML/JSON reference path
-  containing reliability and reference standard deviation.}
+  containing reliability and reference standard deviation. Its instrument ID
+  and version must match every input row.}
   \item{from}{Comparison origin. \code{"previous"} uses the preceding finite
   observation, \code{"baseline"} uses the first finite observation in each
   person-score series, and \code{"episode_start"} uses the first finite
@@ -67,10 +69,34 @@ and classification columns. \code{detect_shift()} and \code{detect_change()}
 return \code{psy_event} data frames.
 }
 \details{
+The reliable change index is calculated as
+\deqn{RCI = (X_2 - X_1) / S_{\mathrm{diff}},}
+where
+\deqn{S_{\mathrm{diff}} = SD_{\mathrm{ref}}\sqrt{2(1-r)}.}
+Here, \code{reference_sd} is the reference-population standard deviation and
+\eqn{r} is the reliability estimate stored in \code{reference}. A change is
+classified as reliable when the absolute RCI is at least the two-sided normal
+critical value determined by \code{confidence}. \code{direction} affects only
+whether the signed change is labelled improvement or deterioration.
+
+Non-finite score values are returned as not available.
+\code{from = "baseline"} and \code{from = "episode_start"} use the first
+finite value in a series, while \code{from = "previous"} uses the preceding
+finite value.
+
+\code{reliable_change()} implements the reliable-change criterion, not the
+separate clinical-significance cutoff described by Jacobson and Truax.
+
 Events are transparent workflow signals for qualified human review. They do
 not constitute diagnoses, treatment recommendations, or crisis-risk
 classifications. Reference validity and population fit are user
 responsibilities.
+}
+\references{
+Jacobson, N. S., and Truax, P. (1991). Clinical significance: A statistical
+approach to defining meaningful change in psychotherapy research.
+\emph{Journal of Consulting and Clinical Psychology}, 59(1), 12--19.
+\doi{10.1037/0022-006X.59.1.12}
 }
 \examples{
 metric <- data.frame(

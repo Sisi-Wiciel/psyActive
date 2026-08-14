@@ -208,9 +208,17 @@ reliable_empty <- function(x, status = "not_available") {
 
 reference_parameters <- function(reference) {
   ref <- if (inherits(reference, "psy_reference")) reference else read_reference(reference)
+  validate_reference_def(ref)
   rel <- suppressWarnings(as.numeric(ref$reliability$estimate %||% NA_real_))[1L]
   sdref <- suppressWarnings(as.numeric(ref$reference_sd %||% NA_real_))[1L]
   list(reference = ref, reliability = rel, reference_sd = sdref)
+}
+
+missing_group_value <- function(x) {
+  numeric_like <- is.numeric(x) || is.complex(x)
+  non_finite <- if (numeric_like) !is.finite(x) else rep(FALSE, length(x))
+  x <- as.character(x)
+  is.na(x) | !nzchar(trimws(x)) | non_finite
 }
 
 change_groups <- function(d, from) {
@@ -227,12 +235,32 @@ change_groups <- function(d, from) {
       psy_abort(paste("Score input is missing:", paste(missing, collapse = ", ")),
                 "psy_error_schema")
     }
+    invalid <- metric[vapply(metric, function(field) {
+      any(missing_group_value(d[[field]]))
+    }, logical(1))]
+    if (length(invalid)) {
+      psy_abort(
+        paste(
+          paste0(
+            "Score grouping fields must be non-missing, non-empty, and ",
+            "finite when numeric:"
+          ),
+          paste(invalid, collapse = ", ")
+        ),
+        "psy_error_schema"
+      )
+    }
     d$.metric_key <- paste(d$instrument_id, d$instrument_version,
                            d$score_name, sep = "\u001f")
     d$.value <- suppressWarnings(as.numeric(d$score_value))
   } else {
     if (!all(c("metric_id", "value") %in% names(d))) {
       psy_abort("Input must contain score_name/score_value or metric_id/value.",
+                "psy_error_schema")
+    }
+    if (any(missing_group_value(d$metric_id))) {
+      psy_abort(
+        "metric_id must be non-missing, non-empty, and finite when numeric.",
                 "psy_error_schema")
     }
     d$.metric_key <- as.character(d$metric_id)
@@ -243,8 +271,12 @@ change_groups <- function(d, from) {
       psy_abort("from='episode_start' requires an episode_id column.",
                 "psy_error_schema")
     }
-    if (any(is.na(d$episode_id) | !nzchar(as.character(d$episode_id)))) {
-      psy_abort("episode_id must be non-missing for from='episode_start'.",
+    if (any(missing_group_value(d$episode_id))) {
+      psy_abort(
+        paste0(
+          "episode_id must be non-missing, non-empty, and finite when ",
+          "numeric for from='episode_start'."
+        ),
                 "psy_error_schema")
     }
     key <- interaction(as.character(d$person_id), d$.metric_key,
@@ -257,13 +289,52 @@ change_groups <- function(d, from) {
   split(d, key)
 }
 
+reliable_origin <- function(values, from) {
+  finite <- which(is.finite(values))
+  origin <- rep(NA_real_, length(values))
+  if (!length(finite)) return(origin)
+  if (from == "previous") {
+    if (length(finite) > 1L) {
+      origin[finite[-1L]] <- values[finite[-length(finite)]]
+    }
+  } else {
+    origin[finite] <- values[finite[1L]]
+  }
+  origin
+}
+
 #' Calculate Reliable Change
-#' @param x Score data ordered over time.
-#' @param reference Reference object or path.
+#' @param x Score or metric data ordered over time. Every row must identify the
+#'   applicable `instrument_id` and `instrument_version`.
+#' @param reference Reference object or path. Its instrument ID and version
+#'   must match every input row.
 #' @param from Comparison origin.
 #' @param confidence Confidence level.
 #' @param direction Score direction.
 #' @return Data frame containing change, RCI, and status.
+#' @details
+#' The reliable change index is calculated as
+#' \deqn{RCI = (X_2 - X_1) / S_{\mathrm{diff}},}
+#' where
+#' \deqn{S_{\mathrm{diff}} = SD_{\mathrm{ref}}\sqrt{2(1-r)}.}
+#' Here, `reference_sd` is the reference-population standard deviation and
+#' `r` is the reliability estimate stored in `reference`. A change is
+#' classified as reliable when the absolute RCI is at least the two-sided
+#' normal critical value determined by `confidence`. `direction` affects only
+#' whether the signed change is labelled improvement or deterioration.
+#'
+#' Non-finite score values are returned as not available. `from = "baseline"`
+#' and `from = "episode_start"` use the first finite value in a series, while
+#' `from = "previous"` uses the preceding finite value.
+#'
+#' This function implements the reliable-change criterion, not the separate
+#' clinical-significance cutoff described by Jacobson and Truax.
+#'
+#' @references
+#' Jacobson, N. S., and Truax, P. (1991). Clinical significance: A statistical
+#' approach to defining meaningful change in psychotherapy research. Journal
+#' of Consulting and Clinical Psychology, 59(1), 12--19.
+#' \doi{10.1037/0022-006X.59.1.12}
 #' @export
 reliable_change <- function(x, reference,
                             from = c("baseline", "previous", "episode_start"),
@@ -295,15 +366,58 @@ reliable_change <- function(x, reference,
     psy_abort("observed_at must contain finite times for reliable change.",
               "psy_error_schema")
   }
-  if (any(is.na(d$person_id) | !nzchar(as.character(d$person_id)))) {
-    psy_abort("person_id must be non-missing for reliable change.",
+  if (any(missing_group_value(d$person_id))) {
+    psy_abort("person_id must be finite, non-missing, and non-empty for reliable change.",
               "psy_error_schema")
   }
-  groups <- change_groups(d, from)
+  identity <- c("instrument_id", "instrument_version")
+  missing_identity <- setdiff(identity, names(d))
+  if (length(missing_identity)) {
+    psy_abort(
+      paste(
+        "Reliable-change input is missing:",
+        paste(missing_identity, collapse = ", ")
+      ),
+      "psy_error_schema"
+    )
+  }
+  invalid_identity <- identity[vapply(identity, function(field) {
+    any(missing_group_value(d[[field]]))
+  }, logical(1))]
+  if (length(invalid_identity)) {
+    psy_abort(
+      paste(
+        paste0(
+          "Reliable-change identity fields must be non-missing, non-empty, ",
+          "and finite when numeric:"
+        ),
+        paste(invalid_identity, collapse = ", ")
+      ),
+      "psy_error_schema"
+    )
+  }
   pars <- reference_parameters(reference)
   ref <- pars$reference
   rel <- pars$reliability
   sdref <- pars$reference_sd
+  mismatch <- as.character(d$instrument_id) != as.character(ref$instrument_id) |
+    as.character(d$instrument_version) != as.character(ref$instrument_version)
+  if (any(mismatch)) {
+    supplied <- unique(paste(
+      as.character(d$instrument_id[mismatch]),
+      as.character(d$instrument_version[mismatch]),
+      sep = "@"
+    ))
+    psy_abort(
+      sprintf(
+        "Reference '%s' applies to %s@%s, but input contains: %s.",
+        ref$reference_id, ref$instrument_id, ref$instrument_version,
+        paste(supplied, collapse = ", ")
+      ),
+      "psy_error_reference"
+    )
+  }
+  groups <- change_groups(d, from)
   if (is.na(rel) || !is.finite(rel) || rel < 0 || rel >= 1 ||
       is.na(sdref) || !is.finite(sdref) || sdref <= 0) {
     result <- reliable_empty(out, status = "insufficient_reference")
@@ -314,12 +428,9 @@ reliable_change <- function(x, reference,
   crit <- stats::qnorm(1 - (1 - confidence) / 2)
   result <- lapply(groups, function(z) {
     z <- z[order(z$observed_at, na.last = TRUE), , drop = FALSE]
-    origin <- if (from == "previous") {
-      c(NA_real_, z$.value[seq_len(max(0L, NROW(z) - 1L))])
-    } else {
-      rep(z$.value[1L], NROW(z))
-    }
+    origin <- reliable_origin(z$.value, from)
     z$change_value <- z$.value - origin
+    z$change_value[!is.finite(z$change_value)] <- NA_real_
     z$rci <- z$change_value / se
     z$reliable_change <- ifelse(
       !is.finite(z$rci), "not_available",

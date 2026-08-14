@@ -8,11 +8,13 @@ Authors@R: c(
 Description: Provides data contracts, declarative instrument scoring, data
     quality assessment, personal baselines, reliable-change calculations,
     transparent longitudinal event detection, review workflows, and auditable
-    reports for research and measurement-based mental health care. The package
-    is designed as decision support: it does not diagnose conditions, recommend
-    treatment, replace comprehensive suicide risk assessment, or initiate
-    clinical action. Included instruments, reference values, and rules are
-    synthetic demonstrations and must not be used as validated clinical tools.
+    reports for research and measurement-based mental health care. The reliable
+    change index is calculated using the method of Jacobson and Truax (1991)
+    <doi:10.1037/0022-006X.59.1.12>. The package is designed as decision support:
+    it does not diagnose conditions, recommend treatment, replace comprehensive
+    suicide risk assessment, or initiate clinical action. Included instruments,
+    reference values, and rules are synthetic demonstrations and must not be
+    used as validated clinical tools.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1.0)

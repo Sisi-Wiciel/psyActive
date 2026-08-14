@@ -15,8 +15,9 @@ hardening_mapping <- function(include_timezone = TRUE) {
 
 one_hardening_observation <- function(
     person = "p1", assessment = "a1", time = "2026-01-01 12:00:00",
-    item = "dms_1", record = "r1", source_timezone = "UTC",
-    timezone = NULL, source_system = "system-a") {
+    item = "dms_1", record = "r1", instrument_version = "1.0.0",
+    source_timezone = "UTC", timezone = NULL,
+    source_system = "system-a") {
   raw <- data.frame(
     person = person,
     assessment = assessment,
@@ -27,6 +28,7 @@ one_hardening_observation <- function(
   )
   raw$time <- time
   mapping <- hardening_mapping(include_timezone = !is.null(source_timezone))
+  mapping$instrument_version <- instrument_version
   if (!is.null(source_timezone)) raw$source_tz <- source_timezone
   as_psy_observation(
     raw,
@@ -61,6 +63,9 @@ test_that("observation identifiers cover identity and exact UTC time", {
     one_hardening_observation(person = "p2")$observation_id,
     one_hardening_observation(record = "r2")$observation_id,
     one_hardening_observation(assessment = "a2")$observation_id,
+    one_hardening_observation(
+      instrument_version = "2.0.0"
+    )$observation_id,
     one_hardening_observation(item = "dms_2")$observation_id,
     one_hardening_observation(source_system = "system-b")$observation_id,
     one_hardening_observation(time = "2026-01-01 12:00:01")$observation_id
@@ -68,6 +73,22 @@ test_that("observation identifiers cover identity and exact UTC time", {
   expect_identical(base$observation_id, same$observation_id)
   expect_false(base$observation_id %in% variants)
   expect_equal(anyDuplicated(variants), 0L)
+
+  version_variant <- one_hardening_observation(
+    instrument_version = "2.0.0"
+  )
+  version_pair <- rbind(base, version_variant)
+  expect_false(identical(
+    base$observation_id,
+    version_variant$observation_id
+  ))
+  expect_false(
+    "duplicates" %in% validate_observation(version_pair)$check_id
+  )
+  expect_false(
+    "duplicates" %in%
+      assess_quality(version_pair, checks = "duplicates")$check_id
+  )
 
   fractional_a <- one_hardening_observation(
     time = as.POSIXct("2026-01-01 12:00:00", tz = "UTC") + 0.1,
