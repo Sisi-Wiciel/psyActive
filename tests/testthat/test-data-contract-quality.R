@@ -114,3 +114,24 @@ test_that("duplicate observation checks distinguish people and source records", 
   quality <- validate_observation(duplicate)
   expect_true(any(quality$check_id == "duplicates"))
 })
+
+test_that("quality duplicate checks include time and instrument identity", {
+  raw <- data.frame(
+    person = "p1", assessment = "same-id",
+    time = c("2026-01-01 12:00:00", "2026-01-01 12:00:01"),
+    tz = "UTC", item = "dms_1", value = 1, record = "r1",
+    instrument = c("instrument-a", "instrument-b"), version = "1.0.0"
+  )
+  mapping <- observation_mapping()
+  mapping$instrument_id <- "instrument"
+  mapping$instrument_version <- "version"
+  observation <- as_psy_observation(
+    raw, mapping, source_system = "test", strict = FALSE
+  )
+  quality <- assess_quality(observation, checks = "duplicates")
+  expect_false(any(quality$check_id == "duplicates"))
+
+  exact <- observation[c(1L, 1L), , drop = FALSE]
+  quality <- assess_quality(exact, checks = "duplicates")
+  expect_true(any(quality$check_id == "duplicates"))
+})

@@ -77,7 +77,7 @@ scores <- score_instrument(obs, read_instrument(inst_file), audit = FALSE)
 
 \donttest{
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  plot_trajectory(scores, "demo-p01", "total")
+  p <- plot_trajectory(scores, "demo-p01", "total")
 }
 }
 

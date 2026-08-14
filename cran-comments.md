@@ -1,15 +1,13 @@
 ## Test environments
 
-* Local Ubuntu 26.04, R 4.5.2, `R CMD check --as-cran`
-* Additional CRAN platform checks: pending
+* Ubuntu 26.04 LTS, R 4.5.2 (2025-10-31), x86_64-pc-linux-gnu,
+  `R CMD check --as-cran --no-manual`
+* Ubuntu 26.04 LTS, isolated source build of R 4.6.1 (2026-06-24),
+  x86_64-pc-linux-gnu, `R CMD check --as-cran --no-manual`
 
 ## R CMD check results
 
-Local `R CMD check --no-manual --no-vignettes` result:
-
-* 0 errors | 0 warnings | 0 notes
-
-Local `R CMD check --as-cran --no-manual` result:
+Both `R CMD check --as-cran --no-manual` runs reported:
 
 * 0 errors | 0 warnings | 2 notes
 * Incoming feasibility reports that this is a new submission.
@@ -17,7 +15,7 @@ Local `R CMD check --as-cran --no-manual` result:
   checked.
 
 Source tarball checked: `psyActive_0.1.0.tar.gz`
-SHA-256: `ca7e83e0299a403a828445fe62c600c330659045ce75504ac7558df13ac4e0c6`
+SHA-256: `3fd1a1787ea038862ce4107f4af9a8ce0576b14251d372c18f6f917cb785d730`
 
 The Markdown rendering note should be rechecked on a CRAN-like service with
 Pandoc before submission.

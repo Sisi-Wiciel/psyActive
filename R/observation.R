@@ -102,8 +102,21 @@ source_timezones <- function(x, mapping, observed_raw, timezone) {
     }
   }
   fallback <- timezone %||% input_timezone
+  explicit_offset <- if (inherits(observed_raw, "POSIXt")) {
+    rep(FALSE, NROW(x))
+  } else {
+    values <- as.character(observed_raw)
+    !is.na(values) & grepl(
+      "(?:Z|[+-][0-9]{2}:?[0-9]{2})$", values, perl = TRUE
+    )
+  }
   missing <- is.na(mapped) | !nzchar(mapped)
   if (any(missing) && !is.null(fallback)) mapped[missing] <- fallback
+  # An explicit ISO-8601 offset is sufficient to identify the instant. Keep a
+  # valid canonical timezone in the normalized schema when no IANA source
+  # timezone was supplied for such a row.
+  missing <- is.na(mapped) | !nzchar(mapped)
+  if (any(missing & explicit_offset)) mapped[missing & explicit_offset] <- "UTC"
 
   if (NROW(x) && any(is.na(mapped) | !nzchar(mapped))) {
     psy_abort(
@@ -145,6 +158,25 @@ mapped_source_names <- function(mapping, source_names) {
   unique(unlist(lapply(specs, function(spec) {
     if (length(spec) == 1L && is.character(spec) && spec %in% source_names) spec else character()
   }), use.names = FALSE))
+}
+
+observation_identity_key <- function(x) {
+  observed_at_utc <- if (inherits(x$observed_at, "POSIXt")) {
+    as.numeric(x$observed_at)
+  } else {
+    as.character(x$observed_at)
+  }
+  data.frame(
+    person_id = as.character(x$person_id),
+    record_id = as.character(x$record_id),
+    assessment_id = as.character(x$assessment_id),
+    instrument_id = as.character(x$instrument_id),
+    instrument_version = as.character(x$instrument_version),
+    item_id = as.character(x$item_id),
+    source_system = as.character(x$source_system),
+    observed_at_utc = observed_at_utc,
+    stringsAsFactors = FALSE
+  )
 }
 
 #' Convert Data to Standard Psychiatric Observations
@@ -204,10 +236,13 @@ as_psy_observation <- function(x, mapping, timezone = NULL, source_system, stric
     ingested_at=rep(now_utc(),n), stringsAsFactors=FALSE)
   fill_raw <- is.na(out$value_raw) & !is.na(out$value_num)
   out$value_raw[fill_raw] <- as.character(out$value_num[fill_raw])
+  identity_key <- observation_identity_key(out)
   out$observation_id <- vapply(seq_len(n), function(i) {
     stable_id(
-      "obs", out$person_id[i], out$record_id[i], out$assessment_id[i],
-      out$item_id[i], out$source_system[i], as.numeric(out$observed_at[i])
+      "obs", identity_key$person_id[i], identity_key$record_id[i],
+      identity_key$assessment_id[i], identity_key$instrument_id[i],
+      identity_key$instrument_version[i], identity_key$item_id[i],
+      identity_key$source_system[i], identity_key$observed_at_utc[i]
     )
   }, character(1))
   out <- new_psy_df(out,"psy_observation")
@@ -244,13 +279,10 @@ validate_observation <- function(x, registry = NULL, level = c("schema","registe
   if (any(bad_missing)) {k<-k+1L;q[[k]]<-make_quality("schema_missing_reason","error",row_id=paste(which(bad_missing),collapse=","),field="missing_reason",message="Unknown missing-reason code.",suggestion=paste("Use one of:",paste(.psy_missing_reasons,collapse=", ")))}
   non_finite <- !is.na(x$value_num) & !is.finite(x$value_num)
   if (any(non_finite)) {k<-k+1L;q[[k]]<-make_quality("schema_non_finite","error",row_id=paste(which(non_finite),collapse=","),field="value_num",message="value_num must contain finite values or NA.",suggestion="Replace infinite and NaN values with valid values or a missing reason.")}
-  duplicate_key <- c(
-    "source_system", "person_id", "record_id", "assessment_id",
-    "instrument_id", "instrument_version", "item_id"
-  )
-  dup <- duplicated(x[duplicate_key]) |
-    duplicated(x[duplicate_key], fromLast = TRUE)
-  if (any(dup)) {k<-k+1L;q[[k]]<-make_quality("duplicates","error",row_id=paste(which(dup),collapse=","),message="Duplicate source record + person + assessment + instrument + item keys.",suggestion="Resolve duplicate source records before scoring.")}
+  identity_key <- observation_identity_key(x)
+  dup <- duplicated(identity_key) |
+    duplicated(identity_key, fromLast = TRUE)
+  if (any(dup)) {k<-k+1L;q[[k]]<-make_quality("duplicates","error",row_id=paste(which(dup),collapse=","),message="Duplicate observation identity keys, including the exact UTC observation time.",suggestion="Resolve exact duplicate observations before scoring.")}
   if (!inherits(x$observed_at,"POSIXct")) {k<-k+1L;q[[k]]<-make_quality("schema_time_type","error",field="observed_at",message="observed_at must be POSIXct.",suggestion="Use as_psy_observation() with an explicit timezone.")}
   bad_timezone <- !is.na(x$source_timezone) &
     (!nzchar(x$source_timezone) | !(x$source_timezone %in% OlsonNames()))

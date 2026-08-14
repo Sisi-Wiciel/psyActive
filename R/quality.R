@@ -228,20 +228,22 @@ assess_quality <- function(
     }
   }
 
-  if ("duplicates" %in% checks &&
-      all(c("source_system", "assessment_id", "item_id") %in% names(x))) {
-    key <- interaction(x[c("source_system", "assessment_id", "item_id")],
-                       drop = TRUE, lex.order = TRUE, sep = "|")
+  duplicate_fields <- c(
+    "person_id", "record_id", "assessment_id", "instrument_id",
+    "instrument_version", "item_id", "source_system", "observed_at"
+  )
+  if ("duplicates" %in% checks && all(duplicate_fields %in% names(x))) {
+    key <- observation_identity_key(x)
     duplicate <- duplicated(key) | duplicated(key, fromLast = TRUE)
     if (any(duplicate)) add(make_quality(
       "duplicates", "error", row_id = paste(which(duplicate), collapse = ","),
-      message = "Duplicate source_system + assessment_id + item_id keys detected.",
-      suggestion = "Resolve duplicate source records before scoring."
+      message = "Duplicate observation identity keys, including the exact UTC observation time, detected.",
+      suggestion = "Resolve exact duplicate observations before scoring."
     ))
   } else if ("duplicates" %in% checks) {
     add(make_quality("duplicates", "info", field = "duplicates",
-                     message = "Duplicate check was not run because its key fields are missing.",
-                     suggestion = "Run schema validation and map source_system, assessment_id, and item_id."))
+                     message = "Duplicate check was not run because its complete identity fields are missing.",
+                     suggestion = paste("Run schema validation and map:", paste(duplicate_fields, collapse = ", "), ".")))
   }
 
   if ("time_order" %in% checks && all(c("person_id", "observed_at") %in% names(x))) {
@@ -352,7 +354,8 @@ plot_quality <- function(x, type = c("overview", "missingness", "compliance")) {
     psy_abort("Package 'ggplot2' is required for plotting.", "psy_error_dependency")
   }
   d <- summarize_quality(x)
-  ggplot2::ggplot(d, ggplot2::aes_string(x = "check_id", y = "n", fill = "severity")) +
+  check_id <- n <- severity <- NULL
+  ggplot2::ggplot(d, ggplot2::aes(x = check_id, y = n, fill = severity)) +
     ggplot2::geom_col() +
     ggplot2::labs(x = "Check", y = "Findings", title = "psyActive data quality") +
     ggplot2::theme_minimal() +

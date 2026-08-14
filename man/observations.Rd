@@ -49,14 +49,17 @@ audit attribute. \code{validate_observation()} returns a
 Identifiers should be pseudonymous. Conversion records both source timezone
 and UTC time so that temporal assumptions remain auditable. ISO 8601 character
 timestamps ending in \code{Z}, \code{+hh:mm}, or \code{+hhmm} are interpreted
-as absolute instants; naive character timestamps are interpreted using their
-row-specific IANA source timezones. A non-empty timezone attribute on
+as absolute instants; when no IANA timezone is supplied for such a value,
+\code{source_timezone} is recorded as \code{UTC}. Naive character timestamps
+are interpreted using their row-specific IANA source timezones. A non-empty timezone attribute on
 \code{POSIXct} or \code{POSIXlt} input is retained as \code{source_timezone},
 and conflicting explicit or mapped timezone metadata is rejected.
 
 Stable observation identifiers are derived from \code{person_id},
-\code{record_id}, \code{assessment_id}, \code{item_id}, \code{source_system},
-and the exact UTC observation time.
+\code{record_id}, \code{assessment_id}, \code{instrument_id},
+\code{instrument_version}, \code{item_id}, \code{source_system}, and the exact
+UTC observation time. Schema-level duplicate detection uses the same identity
+dimensions.
 }
 \examples{
 raw <- data.frame(

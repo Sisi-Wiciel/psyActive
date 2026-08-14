@@ -53,7 +53,7 @@ test_that("observation identifiers cover identity and exact UTC time", {
     source_system = "system-a",
     strict = FALSE
   )
-  expect_false(anyDuplicated(observations$observation_id))
+  expect_equal(anyDuplicated(observations$observation_id), 0L)
 
   base <- one_hardening_observation()
   same <- one_hardening_observation()
@@ -67,7 +67,7 @@ test_that("observation identifiers cover identity and exact UTC time", {
   )
   expect_identical(base$observation_id, same$observation_id)
   expect_false(base$observation_id %in% variants)
-  expect_false(anyDuplicated(variants))
+  expect_equal(anyDuplicated(variants), 0L)
 
   fractional_a <- one_hardening_observation(
     time = as.POSIXct("2026-01-01 12:00:00", tz = "UTC") + 0.1,
@@ -81,6 +81,22 @@ test_that("observation identifiers cover identity and exact UTC time", {
     fractional_a$observation_id,
     fractional_b$observation_id
   ))
+
+  instrument_raw <- data.frame(
+    person = c("p1", "p1"), assessment = "a1",
+    time = "2026-01-01 12:00:00", item = "dms_1", value = 1,
+    record = "r1", instrument = c("instrument-a", "instrument-b"),
+    version = "1.0.0", source_tz = "UTC", stringsAsFactors = FALSE
+  )
+  instrument_mapping <- hardening_mapping()
+  instrument_mapping$instrument_id <- "instrument"
+  instrument_mapping$instrument_version <- "version"
+  instrument_observations <- as_psy_observation(
+    instrument_raw, instrument_mapping, source_system = "system-a",
+    strict = FALSE
+  )
+  expect_equal(anyDuplicated(instrument_observations$observation_id), 0L)
+  expect_false("duplicates" %in% problems(instrument_observations)$check_id)
 })
 
 test_that("explicit ISO 8601 offsets are converted as absolute instants", {
@@ -105,6 +121,13 @@ test_that("explicit ISO 8601 offsets are converted as absolute instants", {
     source_timezone = "Asia/Shanghai"
   )
   expect_equal(as.numeric(observation$observed_at), as.numeric(expected))
+
+  offset_without_mapping <- one_hardening_observation(
+    time = "2026-01-01T12:00:00+08:00",
+    source_timezone = NULL
+  )
+  expect_identical(offset_without_mapping$source_timezone, "UTC")
+  expect_equal(as.numeric(offset_without_mapping$observed_at), as.numeric(expected))
 })
 
 test_that("naive timestamps still use row-specific IANA timezones", {

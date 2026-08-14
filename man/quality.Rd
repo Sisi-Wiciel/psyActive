@@ -57,7 +57,7 @@ summarize_quality(quality)
 
 \donttest{
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  plot_quality(quality)
+  p <- plot_quality(quality)
 }
 }
 }
