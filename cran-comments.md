@@ -4,6 +4,10 @@
   `R CMD check --as-cran --no-manual`
 * Ubuntu 26.04 LTS, isolated source build of R 4.6.1 (2026-06-24),
   x86_64-pc-linux-gnu, `R CMD check --as-cran --no-manual`
+* GitHub Actions, R release on `ubuntu-latest`, `macos-latest`, and
+  `windows-latest`, `R CMD check --as-cran --no-manual`
+* GitHub Actions, R release on `ubuntu-latest` with TinyTeX,
+  full `R CMD check --as-cran` including the PDF manual
 
 ## R CMD check results
 
@@ -22,6 +26,12 @@ The isolated R 4.6.1 check, with Pandoc 3.7.0.2 available, reported:
 
 Both checks used the exact same source tarball and completed the testthat suite
 with 242 passes, 0 failures, 0 warnings, and 0 skips.
+
+The GitHub Actions release matrix completed successfully on Ubuntu, macOS, and
+Windows. Each platform reported `Status: OK` and 242 testthat passes. The
+separate TinyTeX job reported `checking PDF version of manual ... OK` and 242
+testthat passes. Its only note was environment-specific: HTML validation was
+skipped because HTML Tidy and the R package `V8` were unavailable.
 
 Source tarball checked: `psyActive_0.1.0.tar.gz`
 SHA-256: `70e43d0dff9c492b9cbb40945e79f8fc7559f7d10ed476c740e5b00f646b6df6`
