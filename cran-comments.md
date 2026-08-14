@@ -8,6 +8,8 @@
   `windows-latest`, `R CMD check --as-cran --no-manual`
 * GitHub Actions, R release on `ubuntu-latest` with TinyTeX,
   full `R CMD check --as-cran` including the PDF manual
+* Official Win-builder, Windows Server 2022 x64, R-devel r90397 UCRT
+  (2026-08-13), full `R CMD check --as-cran`
 
 ## R CMD check results
 
@@ -34,14 +36,25 @@ separate TinyTeX job reported `checking PDF version of manual ... OK` and 242
 testthat passes. Its only note was environment-specific: HTML validation was
 skipped because HTML Tidy and the R package `V8` were unavailable.
 
+The official Win-builder R-devel check reported:
+
+* 0 errors | 0 warnings | 1 note
+* Package installation, examples, tests, and both the PDF and HTML manuals
+  completed successfully.
+* The testthat suite reported 242 passes, 0 failures, 0 warnings, and 0 skips.
+* The incoming-feasibility note identifies this as a new submission and flags
+  `Truax` as a possibly misspelled word. `Truax` is the correctly spelled
+  surname of an author of the cited Jacobson and Truax (1991) paper.
+
 Source tarball checked: `psyActive_0.1.0.tar.gz`
 SHA-256: `4f3905a6acc108ec15babb767b5b6acc3b05144ef65bc65569dc1891df6358bf`
 
 ## Maintainer
 
 The creator and maintainer address in `DESCRIPTION` is an institutional
-correspondence address. The maintainer must be able to receive and respond to
-CRAN confirmation messages at that address.
+correspondence address. The maintainer has confirmed control of the address,
+can receive and respond to CRAN confirmation messages there, and consents to
+its publication on the CRAN package page.
 
 ## Safety and bundled content
 
