@@ -24,8 +24,9 @@ The isolated R 4.6.1 check, with Pandoc 3.7.0.2 available, reported:
 * The only note is the expected `New submission` note.
 * The testthat suite reported 242 passes, 0 failures, 0 warnings, and 0 skips.
 
-Both checks used the exact same source tarball and completed the testthat suite
-with 242 passes, 0 failures, 0 warnings, and 0 skips.
+The source tarball was created with R 4.6.1. Both local checks used that exact
+same tarball and completed the testthat suite with 242 passes, 0 failures,
+0 warnings, and 0 skips.
 
 The GitHub Actions release matrix completed successfully on Ubuntu, macOS, and
 Windows. Each platform reported `Status: OK` and 242 testthat passes. The
@@ -34,7 +35,7 @@ testthat passes. Its only note was environment-specific: HTML validation was
 skipped because HTML Tidy and the R package `V8` were unavailable.
 
 Source tarball checked: `psyActive_0.1.0.tar.gz`
-SHA-256: `70e43d0dff9c492b9cbb40945e79f8fc7559f7d10ed476c740e5b00f646b6df6`
+SHA-256: `4f3905a6acc108ec15babb767b5b6acc3b05144ef65bc65569dc1891df6358bf`
 
 ## Maintainer
 
